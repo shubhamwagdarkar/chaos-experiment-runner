@@ -1,0 +1,38 @@
+name: http-service-resilience
+description: Verify the API service handles upstream latency gracefully and recovers to steady state after fault injection
+version: "1.0"
+
+steady-state:
+  title: API service is healthy and responsive
+  probes:
+    - name: health-endpoint-responds
+      type: Http
+      config:
+        url: http://localhost:8080/health
+        method: GET
+        timeout-seconds: 5
+      tolerance:
+        status-code: 200
+        max-latency-ms: 500
+    - name: upstream-is-reachable
+      type: Http
+      config:
+        url: http://localhost:8081/ping
+        method: GET
+        timeout-seconds: 3
+      tolerance:
+        status-code: 200
+
+method:
+  name: inject-upstream-latency
+  actions:
+    - name: add-3s-delay-to-upstream
+      type: HttpLatency
+      config:
+        target-url: http://localhost:8081
+        latency-ms: 3000
+        duration-seconds: 30
+
+rollback:
+  enabled: true
+  timeout-seconds: 60

@@ -1,0 +1,27 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.swp
+
+## Environment
+.env
+.env.local
+
+## Test results
+TestResults/
+*.trx
+*.coveragexml
+
+## Build artifacts
+publish/
+artifacts/
+
+## IDE
+.idea/
+*.DotSettings
+
+## Local only
+EXPLAINER.md

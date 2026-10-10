@@ -19,6 +19,12 @@ public sealed record ActionResult(
     string? Message = null
 );
 
+public sealed record RollbackResult(
+    string ActionName,
+    bool Succeeded,
+    string? Message = null
+);
+
 public sealed record ExperimentResult(
     string ExperimentName,
     ExperimentStatus Status,
@@ -27,9 +33,11 @@ public sealed record ExperimentResult(
     SteadyStateResult BeforeState,
     SteadyStateResult AfterState,
     IReadOnlyList<ActionResult> ActionResults,
-    string? FailureReason = null
+    string? FailureReason = null,
+    IReadOnlyList<RollbackResult>? RollbackResults = null
 )
 {
     public TimeSpan Duration => CompletedAt - StartedAt;
     public bool SteadyStateViolated => !BeforeState.Passed || !AfterState.Passed;
+    public bool HasRollbackFailures => RollbackResults?.Any(r => !r.Succeeded) == true;
 }

@@ -12,7 +12,8 @@ public sealed class ExperimentReporterTests
         string name = "my-experiment",
         string? failureReason = null,
         IReadOnlyList<ProbeResult>? beforeProbes = null,
-        IReadOnlyList<ActionResult>? actions = null)
+        IReadOnlyList<ActionResult>? actions = null,
+        IReadOnlyList<RollbackResult>? rollbackResults = null)
     {
         var before = new SteadyStateResult("before", status != ExperimentStatus.Aborted,
             beforeProbes ?? Array.Empty<ProbeResult>());
@@ -20,7 +21,7 @@ public sealed class ExperimentReporterTests
             Array.Empty<ProbeResult>());
         return new ExperimentResult(name, status,
             DateTimeOffset.UtcNow.AddSeconds(-5), DateTimeOffset.UtcNow,
-            before, after, actions ?? Array.Empty<ActionResult>(), failureReason);
+            before, after, actions ?? Array.Empty<ActionResult>(), failureReason, rollbackResults);
     }
 
     [Fact]
@@ -95,6 +96,40 @@ public sealed class ExperimentReporterTests
         var output = writer.ToString();
         output.Should().Contain("health-endpoint");
         output.Should().Contain("upstream-ping");
+    }
+
+    [Fact]
+    public void Report_IncludesRollbackResults_WhenPresent()
+    {
+        var writer = new StringWriter();
+        var reporter = new ConsoleExperimentReporter(writer);
+        var rollbacks = new List<RollbackResult>
+        {
+            new("inject-latency", true, "Rolled back"),
+            new("return-errors", false, "connection refused")
+        }.AsReadOnly();
+
+        reporter.Report(BuildResult(ExperimentStatus.Passed, rollbackResults: rollbacks));
+
+        var output = writer.ToString();
+        output.Should().Contain("inject-latency");
+        output.Should().Contain("return-errors");
+        output.Should().Contain("PARTIAL");
+    }
+
+    [Fact]
+    public void Report_ShowsWarning_WhenRollbackPartiallyFailed()
+    {
+        var writer = new StringWriter();
+        var reporter = new ConsoleExperimentReporter(writer);
+        var rollbacks = new List<RollbackResult>
+        {
+            new("inject-latency", false, "timed out")
+        }.AsReadOnly();
+
+        reporter.Report(BuildResult(ExperimentStatus.Passed, rollbackResults: rollbacks));
+
+        writer.ToString().Should().Contain("WARNING");
     }
 
     [Fact]

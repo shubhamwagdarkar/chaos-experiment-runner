@@ -97,6 +97,7 @@ public sealed class ExperimentRunner : IExperimentRunner
         }
 
         // 4. Rollback faults
+        var rollbackResults = new List<RollbackResult>();
         if (experiment.Rollback.Enabled && executedActions.Count > 0)
         {
             _logger.LogInformation("Rolling back {Count} fault action(s)", executedActions.Count);
@@ -106,14 +107,29 @@ public sealed class ExperimentRunner : IExperimentRunner
             foreach (var action in executedActions)
             {
                 var runner = _faultRunners.FirstOrDefault(r => r.CanHandle(action.Type));
-                if (runner is not null)
+                if (runner is null)
+                {
+                    rollbackResults.Add(new RollbackResult(action.Name, false, $"No runner found for fault type '{action.Type}'"));
+                    continue;
+                }
+
+                try
+                {
                     await runner.RollbackAsync(action, rollbackCts.Token);
+                    rollbackResults.Add(new RollbackResult(action.Name, true, "Rolled back"));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Rollback failed for action '{Action}' — fault may still be active", action.Name);
+                    rollbackResults.Add(new RollbackResult(action.Name, false, ex.Message));
+                }
             }
         }
 
         var result = new ExperimentResult(
             experiment.Name, status, startedAt, DateTimeOffset.UtcNow,
-            beforeState, afterState, actionResults.AsReadOnly(), failureReason);
+            beforeState, afterState, actionResults.AsReadOnly(), failureReason,
+            rollbackResults.Count > 0 ? rollbackResults.AsReadOnly() : null);
 
         _logger.LogInformation("Experiment completed: {Status}", status);
         _reporter.Report(result);

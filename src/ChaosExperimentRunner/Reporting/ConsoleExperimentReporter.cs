@@ -38,10 +38,24 @@ public sealed class ConsoleExperimentReporter : IExperimentReporter
         foreach (var probe in result.AfterState.ProbeResults)
             _output.WriteLine($"    [{(probe.Passed ? "PASS" : "FAIL")}] {probe.ProbeName} ({probe.LatencyMs}ms) — {probe.Message}");
 
+        if (result.RollbackResults is { Count: > 0 })
+        {
+            _output.WriteLine();
+            _output.WriteLine($"  ROLLBACK: {(result.HasRollbackFailures ? "PARTIAL" : "OK")}");
+            foreach (var r in result.RollbackResults)
+                _output.WriteLine($"    [{(r.Succeeded ? "OK  " : "FAIL")}] {r.ActionName} — {r.Message}");
+        }
+
         if (result.FailureReason is not null)
         {
             _output.WriteLine();
             _output.WriteLine($"  FAILURE REASON: {result.FailureReason}");
+        }
+
+        if (result.HasRollbackFailures)
+        {
+            _output.WriteLine();
+            _output.WriteLine("  WARNING: Partial rollback — some faults may still be active.");
         }
 
         _output.WriteLine();

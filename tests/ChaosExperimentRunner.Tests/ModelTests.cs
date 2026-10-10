@@ -97,17 +97,59 @@ public sealed class ModelTests
         cfg.TimeoutSeconds.Should().Be(60);
     }
 
+    [Fact]
+    public void RollbackResult_HasCorrectProperties()
+    {
+        var r = new RollbackResult("inject-latency", false, "connection refused");
+        r.ActionName.Should().Be("inject-latency");
+        r.Succeeded.Should().BeFalse();
+        r.Message.Should().Be("connection refused");
+    }
+
+    [Fact]
+    public void ExperimentResult_HasRollbackFailures_WhenAnyRollbackFailed()
+    {
+        var rollbacks = new List<RollbackResult>
+        {
+            new("a1", true, "OK"),
+            new("a2", false, "timed out")
+        }.AsReadOnly();
+        var result = BuildResult(rollbackResults: rollbacks);
+        result.HasRollbackFailures.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ExperimentResult_HasRollbackFailures_False_WhenAllSucceeded()
+    {
+        var rollbacks = new List<RollbackResult>
+        {
+            new("a1", true, "OK"),
+            new("a2", true, "OK")
+        }.AsReadOnly();
+        var result = BuildResult(rollbackResults: rollbacks);
+        result.HasRollbackFailures.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ExperimentResult_HasRollbackFailures_False_WhenRollbackResultsNull()
+    {
+        var result = BuildResult();
+        result.HasRollbackFailures.Should().BeFalse();
+    }
+
     // Helpers
     private static ExperimentResult BuildResult(
         DateTimeOffset? start = null, DateTimeOffset? end = null,
         ExperimentStatus status = ExperimentStatus.Passed,
-        bool beforePassed = true, bool afterPassed = true)
+        bool beforePassed = true, bool afterPassed = true,
+        IReadOnlyList<RollbackResult>? rollbackResults = null)
     {
         var s = start ?? DateTimeOffset.UtcNow;
         var e = end ?? s.AddSeconds(1);
         var before = new SteadyStateResult("before", beforePassed, Array.Empty<ProbeResult>());
         var after = new SteadyStateResult("after", afterPassed, Array.Empty<ProbeResult>());
-        return new ExperimentResult("exp", status, s, e, before, after, Array.Empty<ActionResult>());
+        return new ExperimentResult("exp", status, s, e, before, after, Array.Empty<ActionResult>(),
+            RollbackResults: rollbackResults);
     }
 
     private static ChaosExperiment BuildExperiment() =>

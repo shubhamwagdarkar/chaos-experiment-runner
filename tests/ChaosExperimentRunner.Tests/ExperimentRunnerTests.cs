@@ -321,6 +321,88 @@ public sealed class ExperimentRunnerTests
     }
 
     [Fact]
+    public async Task RunAsync_RollbackResults_AreRecorded_WhenRollbackEnabled()
+    {
+        var verifier = Substitute.For<ISteadyStateVerifier>();
+        verifier.VerifyAsync(Arg.Any<SteadyStateHypothesis>(), Arg.Any<CancellationToken>())
+                .Returns(PassedState());
+
+        var faultRunner = Substitute.For<IFaultRunner>();
+        faultRunner.CanHandle(FaultType.HttpLatency).Returns(true);
+        faultRunner.ExecuteAsync(Arg.Any<FaultAction>(), Arg.Any<CancellationToken>())
+                   .Returns(new ActionResult("inject-latency", true));
+
+        var runner = BuildRunner(verifier, new[] { faultRunner });
+        var result = await runner.RunAsync(BuildExperiment(rollbackEnabled: true));
+
+        result.RollbackResults.Should().NotBeNull().And.HaveCount(1);
+        result.RollbackResults![0].Succeeded.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RunAsync_RollbackResults_AreNull_WhenRollbackDisabled()
+    {
+        var verifier = Substitute.For<ISteadyStateVerifier>();
+        verifier.VerifyAsync(Arg.Any<SteadyStateHypothesis>(), Arg.Any<CancellationToken>())
+                .Returns(PassedState());
+
+        var faultRunner = Substitute.For<IFaultRunner>();
+        faultRunner.CanHandle(FaultType.HttpLatency).Returns(true);
+        faultRunner.ExecuteAsync(Arg.Any<FaultAction>(), Arg.Any<CancellationToken>())
+                   .Returns(new ActionResult("inject-latency", true));
+
+        var runner = BuildRunner(verifier, new[] { faultRunner });
+        var result = await runner.RunAsync(BuildExperiment(rollbackEnabled: false));
+
+        result.RollbackResults.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenRollbackThrows_RecordsFailedRollbackResult()
+    {
+        var verifier = Substitute.For<ISteadyStateVerifier>();
+        verifier.VerifyAsync(Arg.Any<SteadyStateHypothesis>(), Arg.Any<CancellationToken>())
+                .Returns(PassedState());
+
+        var faultRunner = Substitute.For<IFaultRunner>();
+        faultRunner.CanHandle(FaultType.HttpLatency).Returns(true);
+        faultRunner.ExecuteAsync(Arg.Any<FaultAction>(), Arg.Any<CancellationToken>())
+                   .Returns(new ActionResult("inject-latency", true));
+        faultRunner.RollbackAsync(Arg.Any<FaultAction>(), Arg.Any<CancellationToken>())
+                   .Returns<Task>(_ => throw new InvalidOperationException("rollback connection refused"));
+
+        var runner = BuildRunner(verifier, new[] { faultRunner });
+        var result = await runner.RunAsync(BuildExperiment(rollbackEnabled: true));
+
+        result.RollbackResults.Should().NotBeNull();
+        result.RollbackResults![0].Succeeded.Should().BeFalse();
+        result.RollbackResults[0].Message.Should().Contain("rollback connection refused");
+        result.HasRollbackFailures.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenRollbackThrows_ExperimentStatusIsUnaffected()
+    {
+        var verifier = Substitute.For<ISteadyStateVerifier>();
+        verifier.VerifyAsync(Arg.Any<SteadyStateHypothesis>(), Arg.Any<CancellationToken>())
+                .Returns(PassedState());
+
+        var faultRunner = Substitute.For<IFaultRunner>();
+        faultRunner.CanHandle(FaultType.HttpLatency).Returns(true);
+        faultRunner.ExecuteAsync(Arg.Any<FaultAction>(), Arg.Any<CancellationToken>())
+                   .Returns(new ActionResult("inject-latency", true));
+        faultRunner.RollbackAsync(Arg.Any<FaultAction>(), Arg.Any<CancellationToken>())
+                   .Returns<Task>(_ => throw new InvalidOperationException("rollback failed"));
+
+        var runner = BuildRunner(verifier, new[] { faultRunner });
+        var result = await runner.RunAsync(BuildExperiment(rollbackEnabled: true));
+
+        // Rollback failure does not change experiment status — it's tracked separately
+        result.Status.Should().Be(ExperimentStatus.Passed);
+        result.HasRollbackFailures.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task RunAsync_ExperimentName_IsPreservedInResult()
     {
         var verifier = Substitute.For<ISteadyStateVerifier>();
